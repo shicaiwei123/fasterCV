@@ -7,8 +7,11 @@ face detection,
 landmarks detection，
 video to frame and frame to face, and so on.
 
-# Training tricks
-lib/model_utils.py
+# Training,testing,and deployment
+lib/model_develop_utils.py
+
+# model of  state-of-the-art architectures
+lib/model_arch_utils.py
 
 mixup, warmup,cosine learning rate decay, logging, train, test and deploy model.
 Model visualization with t-sen.

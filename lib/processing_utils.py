@@ -403,7 +403,7 @@ def video_to_frames(pathIn='',
                         count = count + 1
 
 
-def frame_to_face(frame_dir, face_dir, model_name, save_mode='.jpg'):
+def frame_to_face(frame_dir, face_dir, model_name, normal_size=None, save_mode='.jpg'):
     '''
     检测人脸，并保存
     :param frame_dir: 原始帧保留的文件夹
@@ -426,7 +426,11 @@ def frame_to_face(frame_dir, face_dir, model_name, save_mode='.jpg'):
                     continue
 
                 # 人脸检测
-                face_img = face_detector.face_detect(img)
+                if normal_size is not None:
+                    img_normal = cv2.resize(img, normal_size)
+                else:
+                    img_normal = img
+                face_img = face_detector.face_detect(img_normal)
                 if face_img is None:
                     print("if face_img is None:")
                     continue
@@ -445,3 +449,35 @@ def frame_to_face(frame_dir, face_dir, model_name, save_mode='.jpg'):
                 # 存储
                 save_path = os.path.join(save_dir, file_name.split('.')[0] + save_mode)
                 cv2.imwrite(save_path, face_img)
+
+
+def analysis(true_right, true_wrong, false_right, false_wrong):
+    false_all = false_wrong + false_right
+    true_all = true_wrong + true_right
+    true_class = true_right + false_wrong
+    false_class = true_wrong + false_right
+    all = true_right + true_wrong + false_wrong + false_right
+
+    accuracy = (true_right + false_right) / all
+    APCER = false_wrong / false_all
+    BPCER = true_wrong / true_all
+    ACER = (APCER + BPCER) / 2
+    FAR = false_wrong / true_class
+    FRR = true_wrong / false_class
+
+    print("accuracy", accuracy, "APCER", APCER, "BPCER", BPCER, "ACER", ACER, "FAR", FAR, "FRR", FRR)
+
+
+def img_preview(img_dir):
+    file_list = get_file_list(img_dir)
+    for file_path in file_list:
+        img = cv2.imread(file_path)
+        if img is None:
+            continue
+        img_shape = img.shape
+        print("img_shape", img_shape)
+        cv2.namedWindow("img_show", 0)
+        cv2.imshow("img_show", img)
+        cv2.waitKey(0)
+
+

@@ -18,11 +18,13 @@ from torchvision.datasets import ImageFolder
 import sys
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from time import time
+import time
 
 import matplotlib.pyplot as plt
 import os
 from sklearn.manifold import TSNE
+
+
 
 
 def calc_accuracy(model, loader, verbose=False, hter=False):
@@ -177,8 +179,8 @@ def train_base(model, cost, optimizer, train_loader, test_loader, args):
     if not os.path.exists(args.log_root):
         os.makedirs(args.log_root)
 
-    models_dir = args.model_root + '/' + args.model_name
-    log_dir = args.log_root + '/' + args.log_name
+    models_dir = args.model_root + '/' + args.name +'.pt'
+    log_dir = args.log_root + '/' + args.name +'.csv'
 
     # save args
     with open(log_dir, 'a+', newline='') as f:
@@ -248,10 +250,11 @@ def train_base(model, cost, optimizer, train_loader, test_loader, args):
             #                100. * batch_idx / len(train_loader), loss.item()))
 
         # testing
-        accuracy_test = calc_accuracy(model, loader=test_loader)
+        result_test = calc_accuracy(model, loader=test_loader)
+        accuracy_test = result_test[0]
         if accuracy_test > accuracy_best:
             accuracy_best = accuracy_test
-            save_path = args.model_root + args.model_name + '.pth'
+            save_path = args.model_root + args.name + '.pth'
             torch.save(model.state_dict(), save_path)
         log_list.append(train_loss / len(train_loader))
         log_list.append(accuracy_test)
@@ -278,8 +281,8 @@ def train_base(model, cost, optimizer, train_loader, test_loader, args):
                 "optim_state": optimizer.state_dict(),
                 "args": args
             }
-            save_path = models_dir + 'pt'
-            torch.save(train_state, save_path)
+            models_dir = args.model_root + '/' + args.name +'.pt'
+            torch.save(train_state, models_dir)
 
         #  save log
         with open(log_dir, 'a+', newline='') as f:
