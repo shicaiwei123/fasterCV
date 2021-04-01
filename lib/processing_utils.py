@@ -4,11 +4,13 @@ import torch
 import csv
 import cv2
 import dlib
+import random
 
 
 class FaceDection(object):
     '''
     提供多种人脸检测方法的实现
+    输入人脸,选择检测模式,输出人脸图像
     '''
 
     def __init__(self, model_name, face_max=True):
@@ -113,6 +115,7 @@ class FaceDection(object):
 class LandmarksDetection(object):
     '''
     提供了多种人脸关键点检测算法的实现
+    输入的最好是单个人脸图像
     '''
 
     def __init__(self):
@@ -205,6 +208,8 @@ def get_file_list(read_path):
 def get_mean_std(dataset, ratio=1):
     """Get mean and std by sample ratio
     """
+    '求数据集的均值方差'
+    '本质是读取一个epoch的数据进行测试,只不过把一个epoch的大小设置成了所有数据'
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=int(len(dataset) * ratio),
                                              shuffle=True, num_workers=10)
     train = iter(dataloader).next()[0]  # 一个batch的数据
@@ -212,6 +217,13 @@ def get_mean_std(dataset, ratio=1):
     std = np.std(train.numpy(), axis=(0, 2, 3))
     return mean, std
 
+
+def seed_torch(seed=0):
+    '''在使用模型的时候用于设置随机数'''
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
 
 def save_csv(csv_path, data):
     '''
@@ -225,6 +237,18 @@ def save_csv(csv_path, data):
         csv_write = csv.writer(f)
         csv_write.writerow(data)
     f.close()
+
+
+def save_args(args, save_path):
+    if os.path.exists(save_path):
+        os.makedirs(save_path)
+    with open(save_path, 'a+', newline='') as f:
+        my_writer = csv.writer(f)
+        args_dict = vars(args)
+        for key, value in args_dict.items():
+            my_writer.writerow([key, value])
+        f.close()
+
 
 
 def read_csv(csv_path):

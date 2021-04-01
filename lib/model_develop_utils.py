@@ -25,8 +25,6 @@ import os
 from sklearn.manifold import TSNE
 
 
-
-
 def calc_accuracy(model, loader, verbose=False, hter=False):
     """
     :param model: model network
@@ -179,8 +177,8 @@ def train_base(model, cost, optimizer, train_loader, test_loader, args):
     if not os.path.exists(args.log_root):
         os.makedirs(args.log_root)
 
-    models_dir = args.model_root + '/' + args.name +'.pt'
-    log_dir = args.log_root + '/' + args.name +'.csv'
+    models_dir = args.model_root + '/' + args.name + '.pt'
+    log_dir = args.log_root + '/' + args.name + '.csv'
 
     # save args
     with open(log_dir, 'a+', newline='') as f:
@@ -190,11 +188,19 @@ def train_base(model, cost, optimizer, train_loader, test_loader, args):
             my_writer.writerow([key, value])
         f.close()
 
-    # Cosine learning rate decay
-    if args.lrcos:
+    #  learning rate decay
+    if args.lr_decrease == 'cos':
         print("lrcos is using")
-        cos_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.train_epoch, eta_min=0)
+        cos_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.train_epoch + 20, eta_min=0)
 
+        if args.lr_warmup:
+            scheduler_warmup = GradualWarmupScheduler(args, optimizer, multiplier=1,
+                                                      after_scheduler=cos_scheduler)
+    elif args.lr_decrease == 'multi_step':
+        print("multi_step is using")
+        cos_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[np.int(args.train_epoch * 1 / 6),
+                                                                              np.int(args.train_epoch * 2 / 6),
+                                                                              np.int(args.train_epoch * 3 / 6)])
         if args.lr_warmup:
             scheduler_warmup = GradualWarmupScheduler(args, optimizer, multiplier=1,
                                                       after_scheduler=cos_scheduler)
@@ -254,7 +260,7 @@ def train_base(model, cost, optimizer, train_loader, test_loader, args):
         accuracy_test = result_test[0]
         if accuracy_test > accuracy_best:
             accuracy_best = accuracy_test
-            save_path = args.model_root + args.name + '.pth'
+            save_path = os.path.join(args.model_root, args.name + '.pth')
             torch.save(model.state_dict(), save_path)
         log_list.append(train_loss / len(train_loader))
         log_list.append(accuracy_test)
@@ -281,7 +287,7 @@ def train_base(model, cost, optimizer, train_loader, test_loader, args):
                 "optim_state": optimizer.state_dict(),
                 "args": args
             }
-            models_dir = args.model_root + '/' + args.name +'.pt'
+            models_dir = args.model_root + '/' + args.name + '.pt'
             torch.save(train_state, models_dir)
 
         #  save log
