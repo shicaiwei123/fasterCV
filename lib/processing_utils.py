@@ -218,6 +218,13 @@ def get_mean_std(dataset, ratio=1):
     return mean, std
 
 
+def seed_torch(seed=0):
+    '''在使用模型的时候用于设置随机数'''
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+
 def get_dataself_hist(arr):
     '''
     统计一个arr 不同数字出现的频率
