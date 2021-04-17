@@ -245,12 +245,6 @@ def get_dataself_hist(arr):
 
 
 
-def seed_torch(seed=0):
-    '''在使用模型的时候用于设置随机数'''
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
 
 def save_csv(csv_path, data):
     '''
