@@ -15,7 +15,7 @@ parser = ArgumentParser()
 parser.add_argument('--train_epoch', type=int, default=200)
 parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--lr', type=float, default=0.001)
-parser.add_argument('--lrcos', type=bool, default=False, help='using cosine learning rate decay or not ')
+parser.add_argument('--lr_decrease', type=str, default=None, help=' learning rate decay  ')
 parser.add_argument('--lr_warmup', type=bool, default=False)
 parser.add_argument('--mixup', type=bool, default=False, help='using mixup or not')
 parser.add_argument('--mixup_alpha', type=float, default=0.2)
@@ -27,6 +27,8 @@ parser.add_argument('--log_interval', type=int, default=10, help='How many batch
 parser.add_argument('--save_interval', type=int, default=10, help='How many batches to save the model once')
 parser.add_argument('--model_root', type=str, default='../output/models')
 parser.add_argument('--log_root', type=str, default='../output/logs')
+parser.add_argument('--pretrain', type=bool, default=True)
+parser.add_argument('--freeze', type=bool, default=False)
 
 
 parser.add_argument('--model_name', type=str, default='mnist_cnn_best')
