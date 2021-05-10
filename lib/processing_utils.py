@@ -225,6 +225,7 @@ def seed_torch(seed=0):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
 
+
 def get_dataself_hist(arr):
     '''
     统计一个arr 不同数字出现的频率
@@ -244,6 +245,21 @@ def get_dataself_hist(arr):
     return result
 
 
+def makedir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+
+def replace_string(path, index, new_one):
+    '''
+    选择更换指定未知的字符串为某个新字符串
+    :param path:
+    :return:
+    '''
+    path_split = path.split('/')
+    path_split[index] = new_one
+    path_new = '/'.join(path_split)
+    return path_new
 
 
 def save_csv(csv_path, data):
@@ -269,7 +285,6 @@ def save_args(args, save_path):
         for key, value in args_dict.items():
             my_writer.writerow([key, value])
         f.close()
-
 
 
 def read_csv(csv_path):
@@ -524,5 +539,3 @@ def img_preview(img_dir):
         cv2.namedWindow("img_show", 0)
         cv2.imshow("img_show", img)
         cv2.waitKey(0)
-
-
