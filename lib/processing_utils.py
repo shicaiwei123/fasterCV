@@ -250,6 +250,23 @@ def makedir(path):
         os.makedirs(path)
 
 
+def transform_test(transform, img_path):
+    '''
+    用于测试设置的transform 是否有问题
+    :param transform:
+    :param img_path:
+    :return:
+    '''
+    from PIL import Image
+
+    img_pil = Image.open(img_path).convert(
+        'RGB')
+    img_r = transform(img_pil)
+    img_b = transform(img_pil)
+    img_r.show()
+    img_b.show()
+
+
 def replace_string(path, index, new_one):
     '''
     选择更换指定未知的字符串为某个新字符串

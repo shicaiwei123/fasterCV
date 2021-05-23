@@ -38,6 +38,6 @@ parser.add_argument('--train_dir', type=str,
 parser.add_argument('--test_dir', type=str,
                     default='/home/bbb//shicaiwei/data/liveness_data/CASIA_SURF_color_path/test')
 
-args_normal = parser.parse_args()
+args = parser.parse_args()
 
-args_normal.mixup = False
+args.mixup = False
