@@ -158,6 +158,47 @@ class LandmarksDetection(object):
         return points_keys
 
 
+def recut_face_with_landmarks(img, display=False):
+    '''
+    检测人脸关键点,利用关键点裁剪人脸,
+    :param origin_face_dir:
+    :param target_face_dir:
+    :return:
+    '''
+    landmarks_detector = LandmarksDetection()
+    x_data = np.zeros(27)
+    y_data = np.zeros(27)
+
+    h, w = img.shape[0], img.shape[1]
+    mask = np.zeros((h, w), dtype=np.uint8)
+    face_landmarks = landmarks_detector.landmarks_detect(img, display=display)
+    face_landmarks = np.array(face_landmarks)
+    x_temp = face_landmarks[0:17, 0]
+    y_temp = face_landmarks[0:17, 1]
+    x_data[0:17] = x_temp
+    y_data[0:17] = y_temp
+    for i in range(5):
+        a = face_landmarks[26 - i][0]
+        x_data[17 + i] = face_landmarks[26 - i][0]
+        y_data[17 + i] = face_landmarks[26 - i][1]
+
+    for i in range(5):
+        x_data[22 + i] = face_landmarks[22 - i][0]
+        y_data[22 + i] = face_landmarks[22 - i][1]
+
+    pts = np.vstack((x_data, y_data)).astype(np.int32).T
+    cv2.fillConvexPoly(mask, pts, (255), 8, 0)
+
+    result = cv2.bitwise_and(img, img, mask=mask)
+    if display:
+        cv2.imshow("mask", mask)
+        # 根据mask，提取ROI区域
+        cv2.imshow("result", result)
+        cv2.waitKey(0)
+
+    return result
+
+
 def get_file_list(read_path):
     '''
     获取文件夹下图片的地址
@@ -217,6 +258,25 @@ def get_mean_std(dataset, ratio=1):
     std = np.std(train.numpy(), axis=(0, 2, 3))
     return mean, std
 
+
+def makedir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+
+def replace_string(path, index, new_one):
+    '''
+    选择更换指定未知的字符串为某个新字符串
+    :param path: 原始字符串
+    : index 要修改的字符位置
+    :new_one  更新的目标
+
+    :return:
+    '''
+    path_split = path.split('/')
+    path_split[index] = new_one
+    path_new = '/'.join(path_split)
+    return path_new
 
 def seed_torch(seed=0):
     '''在使用模型的时候用于设置随机数'''

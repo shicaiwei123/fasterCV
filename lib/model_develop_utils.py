@@ -1,4 +1,4 @@
-'''模型训练相关的函数'''
+'''模型训练相关的函数: 训练,测试,以及一些训练技巧.如变学习率,warmup'''
 
 import numpy as np
 import pickle
@@ -25,8 +25,10 @@ import os
 from sklearn.manifold import TSNE
 import torch.nn as nn
 
+
 def calc_accuracy(model, loader, verbose=False, hter=False):
     """
+    分类问题的测试函数,可能需要实际情况,更改dataloader读取部分.例如 calc_accuracy_multi in model_develop.py
     :param model: model network
     :param loader: torch.utils.data.DataLoader
     :param verbose: show progress bar, bool
@@ -44,7 +46,11 @@ def calc_accuracy(model, loader, verbose=False, hter=False):
             inputs = inputs.cuda()
             labels = labels.cuda()
         with torch.no_grad():
-            outputs_batch = model(inputs)
+            outputs_batch = model(inputs)[0]
+
+            # 如果有模型有多个返回
+            if isinstance(outputs_batch, tuple):
+                outputs_batch = outputs_batch[0]
         outputs_full.append(outputs_batch)
         labels_full.append(labels)
     model.train(mode_saved)
@@ -75,28 +81,42 @@ def calc_accuracy(model, loader, verbose=False, hter=False):
                     living_wrong += 1
                 else:
                     spoofing_wrong += 1
+        try:
+            FRR = living_wrong / (living_wrong + living_right)
+            APCER = living_wrong / (spoofing_right + living_wrong)
+            NPCER = spoofing_wrong / (spoofing_wrong + living_right)
+            ACER = (APCER + NPCER) / 2
+            FAR = spoofing_wrong / (spoofing_wrong + spoofing_right)
+            HTER = (FAR + FRR) / 2
 
-        FAR = living_wrong / (living_wrong + living_right)
-        FRR = spoofing_wrong / (spoofing_wrong + spoofing_right)
-        HTER = (FAR + FRR) / 2
+            FAR = float("%.6f" % FAR)
+            FRR = float("%.6f" % FRR)
+            HTER = float("%.6f" % HTER)
+            APCER = float("%.6f" % APCER)
+            NPCER = float("%.6f" % NPCER)
+            ACER = float("%.6f" % ACER)
+            accuracy = float("%.6f" % accuracy)
 
-        FAR = float("%.6f" % FAR)
-        FRR = float("%.6f" % FRR)
-        HTER = float("%.6f" % HTER)
-        accuracy = float("%.6f" % accuracy)
+        except Exception as e:
+            print(living_right, living_wrong, spoofing_right, spoofing_wrong)
+            return [accuracy, 1, 1, 1, 1, 1, 1]
 
-        return [accuracy, FAR, FRR, HTER]
+        print(living_right, living_wrong, spoofing_right, spoofing_wrong)
+        return [accuracy, FAR, FRR, HTER, APCER, NPCER, ACER]
+
     else:
         return [accuracy]
 
 
-def calc_accuracy_pixel(model, loader, verbose=False, hter=False):
-    """
-    :param model: model network
-    :param loader: torch.utils.data.DataLoader
-    :param verbose: show progress bar, bool
-    :return accuracy, float
-    """
+def calc_accuracy_pixel(model, loader, verbose=False):
+    '''
+    回归问题的测试函数,可能需要实际情况,更改dataloader读取部分. 例如 calc_accuracy_multi in model_develop.py
+    :param model: trained network
+    :param loader: dataloader
+    :param verbose: showing training progress bar or not
+    :return:
+    '''
+
     mode_saved = model.training
     measure = nn.MSELoss()
     measure_loss = 0
@@ -110,6 +130,10 @@ def calc_accuracy_pixel(model, loader, verbose=False, hter=False):
             labels = labels.cuda()
         with torch.no_grad():
             outputs_batch = model(inputs)
+
+            # 如果有模型有多个返回
+            if isinstance(outputs_batch, tuple):
+                outputs_batch = outputs_batch[0]
         measure_loss += measure(outputs_batch, labels)
     model.train(mode_saved)
 
@@ -466,7 +490,6 @@ def train_pixel_supervise(model, cost, optimizer, train_loader, test_loader, arg
     print("training is end", train_duration_sec)
 
 
-
 def test_base(model, cost, test_loader):
     '''
     :param model: 要测试的带参数模型
@@ -588,3 +611,199 @@ def sne_analysis(model, data_loader):
                          't-SNE embedding of the digits (time %.2fs)'
                          % (time() - t0))
     plt.show()
+
+
+# def train_target_encoder_with_validation(src_encoder, tgt_encoder, critic,
+#                          src_data_loader, tgt_data_loader, val_data_loader, args):
+#
+#     '''
+#     带有验证删选的目标编码器训练.在满足目标域的特征和源域距离小,同时还尽量保持学习到的特征具有区分性.而不是将编码器解到源目标域的分类器,来进行分类
+#     :param src_encoder: 源编码器,产生源数据域的数据特征
+#     :param tgt_encoder:目标编码器,产生目标数据域的数据特征
+#     :param critic: 鉴别器
+#     :param src_data_loader:
+#     :param tgt_data_loader:
+#     :param val_data_loader:
+#     :param args:
+#     :return:
+#     '''
+#
+#     val_best = 0
+#
+#     ####################
+#     # 1. setup network #
+#     ####################
+#
+#     # set train state for Dropout and BN layers
+#     tgt_encoder.train()
+#     critic.train()
+#
+#     # setup criterion and optimizer
+#     criterion = nn.CrossEntropyLoss()
+#     optimizer_tgt = optim.Adam(tgt_encoder.parameters(),
+#                                lr=args.d_learning_rate,
+#                                betas=(args.beta1, args.beta2))
+#     optimizer_critic = optim.Adam(critic.parameters(),
+#                                   lr=args.c_learning_rate,
+#                                   betas=(args.beta1, args.beta2))
+#
+#     # optimizer_tgt = optim.RMSprop(tgt_encoder.parameters(),
+#     #                               lr=params.d_learning_rate,
+#     #                               # betas=(params.beta1, params.beta2)
+#     #                               )
+#     # optimizer_critic = optim.RMSprop(critic.parameters(),
+#     #                                  lr=params.c_learning_rate,
+#     #                                  # betas=(params.beta1, params.beta2)
+#     #                                  )
+#     #
+#
+#     len_data_loader = min(len(src_data_loader), len(tgt_data_loader))
+#     print(len(src_data_loader), len(tgt_data_loader))
+#     ####################
+#     # 2. train network #
+#     ####################
+#
+#     for epoch in range(args.train_epoch):
+#         # zip source and target data pair
+#         loss_class_sum = 0
+#         data_zip = enumerate(zip(src_data_loader, tgt_data_loader))
+#         for step, ((images_src, _), (images_tgt, label)) in data_zip:
+#             ###########################
+#             # 2.1 train discriminator #
+#             ###########################
+#             for _ in range(args.discriminator_iternum):
+#                 # make images variable
+#                 if torch.cuda.is_available():
+#                     images_src = images_src.cuda()
+#                     images_tgt = images_tgt.cuda()
+#                     label = label.cuda()
+#
+#                 # zero gradients for optimizer
+#                 optimizer_critic.zero_grad()
+#
+#                 # extract and concat features
+#                 x, feat_src = src_encoder(images_src)
+#                 x_predict, feat_tgt = tgt_encoder(images_tgt)
+#                 feat_concat = torch.cat((feat_src, feat_tgt), 0)
+#
+#                 # predict on discriminator
+#                 pred_concat = critic(feat_concat.detach())
+#
+#                 # prepare real and fake label
+#                 label_src = torch.ones(feat_src.size(0)).long()
+#                 label_src[1:int(len(label_src) * 0.05)] = 0
+#                 index = [i for i in range(label_src.shape[0])]
+#                 random.shuffle(index)
+#                 label_src = label_src[index]
+#
+#                 if torch.cuda.is_available():
+#                     label_src = label_src.cuda()
+#
+#                 label_tgt = torch.zeros(feat_tgt.size(0)).long()
+#                 label_tgt[1:int(len(label_tgt) * 0.05)] = 1
+#                 index = [i for i in range(label_tgt.shape[0])]
+#                 random.shuffle(index)
+#                 label_tgt = label_tgt[index]
+#
+#                 if torch.cuda.is_available():
+#                     label_tgt = label_tgt.cuda()
+#
+#                 label_concat = torch.cat((label_src, label_tgt), 0)
+#
+#                 # compute loss for critic
+#                 loss_critic = criterion(pred_concat, label_concat)
+#
+#                 # add classify loss and critic loss
+#                 loss_critic.backward()
+#
+#                 # optimize critic
+#                 optimizer_critic.step()
+#
+#             pred_cls = torch.squeeze(pred_concat.max(1)[1])
+#             acc = (pred_cls == label_concat).float().mean()
+#
+#             ############################
+#             # 2.2 train target encoder # 训练目标域的特征提取器,使得提取的特征和源域尽可能接近
+#             ############################
+#             iter_time = 1
+#             for _ in range(args.generate_iternum):
+#                 # zero gradients for optimizer
+#                 optimizer_critic.zero_grad()
+#                 optimizer_tgt.zero_grad()
+#
+#                 # extract and target features
+#                 x_predict, feat_tgt = tgt_encoder(images_tgt)
+#
+#                 # predict on discriminator
+#                 pred_tgt = critic(feat_tgt)
+#
+#                 # prepare fake labels
+#                 label_tgt = torch.ones(feat_tgt.size(0)).long()
+#                 if torch.cuda.is_available():
+#                     label_tgt = label_tgt.cuda()
+#
+#                 # compute loss for target encoder
+#                 loss_tgt = criterion(pred_tgt, label_tgt)
+#
+#                 # compute loss for class
+#                 x_predict = x_dropout(x_predict)
+#                 loss_classify = criterion(x_predict, label)
+#                 loss = loss_classify + loss_tgt
+#                 loss_class_sum += loss_classify
+#
+#                 loss.backward()
+#
+#             # optimize target encoder
+#             optimizer_tgt.step()
+#
+#             #######################
+#             # 2.3 print step info #
+#             #######################
+#             if ((step + 1) % args.log_interval == 0):
+#                 print("Epoch [{}/{}] Step [{}/{}]:"
+#                       "discriminator_loss={:.5f}  loss_tgt={:.5f},loss_class={:.5f} discriminator_acc={:.5f}  feature_dis={:.5f}  feature_norm2={:.5f}  val_best={:.5f}"
+#                       .format(epoch + 1,
+#                               args.train_epoch,
+#                               step + 1,
+#                               len_data_loader,
+#                               loss_critic.item(),
+#                               loss_tgt.item(),
+#                               loss_class_sum.item(),
+#                               acc.item(),
+#                               torch.sum(feat_tgt - feat_src).cpu().item(),
+#                               torch.norm(feat_tgt - feat_src).cpu().item(),
+#                               val_best
+#                               ))
+#             loss_class_sum = 0
+#
+#         # test in each epoch
+#         result = calc_accuracy(model=tgt_encoder, loader=val_data_loader, verbose=True, hter=True)
+#         print(result)
+#         val_test = result[0]
+#         if val_test > val_best:
+#             val_best = val_test
+#             torch.save(tgt_encoder.state_dict(), os.path.join(
+#                 args.model_root,
+#                 args.method + "-" + args.teacher_data + "-" + args.student_data + "-val_best.pth".format(
+#                     epoch + 1)))
+#
+#         #############################
+#         # 2.4 save model parameters #
+#         #############################
+#         if ((epoch + 1) % args.save_interval == 0):
+#             torch.save(critic.state_dict(), os.path.join(
+#                 args.model_root,
+#                 args.method + "-" + args.teacher_data + "-" + args.student_data + "-critic-{}.pth".format(
+#                     epoch + 1)))
+#             torch.save(tgt_encoder.state_dict(), os.path.join(
+#                 args.model_root,
+#                 args.method + "-" + args.teacher_data + "-" + args.student_data + "-encoder-{}.pth".format(
+#                     epoch + 1)))
+#
+#     torch.save(critic.state_dict(), os.path.join(
+#         args.model_root,
+#         args.method + "-" + args.teacher_data + "-" + args.student_data + "-critic-final.pth"))
+#     torch.save(tgt_encoder.state_dict(), os.path.join(
+#         args.model_root,
+#         args.method + "-" + args.teacher_data + "-" + args.student_data + "-encoder-final.pth"))
+#     return tgt_encoder

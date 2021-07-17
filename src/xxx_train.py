@@ -7,7 +7,7 @@ import sys
 
 sys.path.append('..')
 from models.resnet_cbam import resnet18_cbam
-from src.name_dataloader import xxx_dataloader
+from src.xxx_dataloader import xxx_dataloader
 from configuration.config_normal import args
 import torch
 import torch.nn as nn

@@ -10,6 +10,9 @@ import numpy as np
 
 
 class ImgBinaryDataset(Dataset):
+    '''
+    适用于二分类
+    '''
 
     def __init__(self, living_dir, spoofing_dir, balance=True, data_transform=None):
 
