@@ -5,6 +5,7 @@ import csv
 import cv2
 import dlib
 import random
+import h5py
 
 
 class FaceDection(object):
@@ -264,7 +265,7 @@ def makedir(path):
         os.makedirs(path)
 
 
-def replace_string(path, index, new_one):
+def replace_string(path, index, new_one, split_str='/'):
     '''
     选择更换指定未知的字符串为某个新字符串
     :param path: 原始字符串
@@ -273,10 +274,11 @@ def replace_string(path, index, new_one):
 
     :return:
     '''
-    path_split = path.split('/')
+    path_split = path.split(split_str)
     path_split[index] = new_one
-    path_new = '/'.join(path_split)
+    path_new = split_str.join(path_split)
     return path_new
+
 
 def seed_torch(seed=0):
     '''在使用模型的时候用于设置随机数'''
@@ -284,6 +286,151 @@ def seed_torch(seed=0):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
+
+
+def split_txt(txt_path, prop_list):
+    '''
+    将一个任务的验证或者测试集进行划分
+    :param txt_path:
+    :prop_list: 不同部分的占比,如[6,2,2]
+    :return:
+    '''
+
+    txt_path_split = txt_path.split('/')
+    txt_name = txt_path_split[-1]
+    txt_index = txt_name.split('.')[0]
+    txt_path_split.pop()
+    save_dir = '/'.join(txt_path_split)
+
+    txt_read = read_txt(txt_path)
+    count = 0  # step=10,count 记录step的数量.
+    index_min = 0
+    while len(txt_read) / (count * 10 + 1) > 1:
+        for prop in prop_list:
+            print(index_min)
+            prop_save_path = os.path.join(save_dir, txt_index + "_" + str(prop) + '.txt')
+            read_part = txt_read[index_min + 10 * count:index_min + prop + 10 * count]
+            index_min += prop
+            with open(prop_save_path, 'a+') as f:
+                for content in read_part:
+                    f.write(content)
+                    f.write('\n')
+        count += 1
+        index_min = 0
+
+
+def add_txt(txt_path_1, txt_path_2, txt_path_new=None):
+    '''
+    合并两个txt
+    :return:
+    '''
+    txt_path_1_read = read_txt(txt_path_1)
+    if txt_path_new is None:
+        txt_path_new = txt_path_2
+        with open(txt_path_new, 'a+') as f:
+            for content in txt_path_1_read:
+                f.write(content)
+                f.write('\n')
+    else:
+        txt_path_2_read = read_txt(txt_path_2)
+        with open(txt_path_new, 'a+') as f:
+            for content in txt_path_1_read:
+                f.write(content)
+                f.write('\n')
+        with open(txt_path_new, 'a+') as f:
+            for content in txt_path_2_read:
+                f.write(content)
+                f.write('\n')
+
+
+def sort_via_assist(origin_list, assist_list):
+    '''
+    利用assist_list 帮助排序 origin_list
+    :param sort_list:
+    :param assist_list:
+    :return:
+    '''
+
+    zipped = zip(origin_list, assist_list)
+    sort_zipped = sorted(zipped, key=lambda x: (x[1], x[0]))
+    result = zip(*sort_zipped)
+    x_axis, y_axis = [list(x) for x in result]
+
+    return x_axis, y_axis
+
+
+def dataset_pair(multimodal_txt_path, unimodal_txt_path, pair_txt_path):
+    '''
+    将多模态数据集和单模态数据集,按照label 进行配对
+    :return:
+    '''
+    multimodal_txt_read = read_txt(multimodal_txt_path)
+    multimodal_label_list = []
+    for index in range(len(multimodal_txt_read)):
+        line_split = multimodal_txt_read[index].split(' ')
+        if line_split[-1] == '':
+            label = line_split[-2]
+        else:
+            label = line_split[-1]
+        multimodal_label_list.append(int(label))
+    multimodal_txt_read, multimodal_label_sort = sort_via_assist(multimodal_txt_read, multimodal_label_list)
+    multimodal_living_number = sum(multimodal_label_sort)
+    multimodal_spoofing_number = len(multimodal_label_sort) - multimodal_living_number
+    print(multimodal_spoofing_number, multimodal_living_number)
+
+    unimodal_txt_read = read_txt(unimodal_txt_path)
+    unimodal_label_list = []
+    for index in range(len(unimodal_txt_read)):
+        line_split = unimodal_txt_read[index].split(' ')
+        if line_split[-1] == ' ':
+            label = line_split[-2]
+        else:
+            label = line_split[-1]
+        # unimodal_txt_read[index] = line_split
+        unimodal_label_list.append(int(label))
+    unimodal_txt_read, unimodal_label_sort = sort_via_assist(unimodal_txt_read, unimodal_label_list)
+    unimodal_living_number = sum(unimodal_label_sort)
+    unimodal_spoofing_number = len(unimodal_label_sort) - unimodal_living_number
+    print(unimodal_spoofing_number, unimodal_living_number)
+    import time
+    time.sleep(5)
+
+    temp = []
+    spoofing_prop = multimodal_spoofing_number // unimodal_spoofing_number
+    spoofing_mod = np.mod(multimodal_spoofing_number, unimodal_spoofing_number)
+    print(spoofing_prop, spoofing_mod)
+    # time.sleep(5)
+    unimodal_spoofing_file = unimodal_txt_read[0:unimodal_spoofing_number]
+    # print(unimodal_spoofing_file)
+    spoofing_tile = list(np.tile(unimodal_spoofing_file, spoofing_prop))
+    temp = temp + spoofing_tile
+    temp = temp + unimodal_txt_read[0:spoofing_mod]
+    print(len(temp))
+
+    living_prop = multimodal_living_number // unimodal_living_number
+    living_mod = np.mod(multimodal_living_number, unimodal_living_number)
+    unimodal_living_file = unimodal_txt_read[unimodal_spoofing_number:len(unimodal_txt_read)]
+    living_tile = list(np.tile(unimodal_living_file, living_prop))
+    temp = temp + living_tile
+    temp = temp + unimodal_txt_read[unimodal_spoofing_number:unimodal_spoofing_number + living_mod]
+    save_split = []
+    for index in range(len(multimodal_label_sort)):
+        multimodal_line = multimodal_txt_read[index]
+        multimodal_line_split = multimodal_line.split(' ')
+
+        unimodal_line = temp[index]
+        unimodal_line_split = unimodal_line.split(' ')
+        print(multimodal_line_split)
+        print(unimodal_line_split)
+        if multimodal_line_split[-1] == '':
+            multimodal_line_split.pop()
+        assert multimodal_line_split[-1] == unimodal_line_split[-1]
+
+        save_split.append(multimodal_line_split)
+        save_split[index].insert(0, unimodal_line_split[0])
+
+    for line in save_split:
+        save_csv(pair_txt_path, line)
 
 
 def get_dataself_hist(arr):
@@ -305,11 +452,6 @@ def get_dataself_hist(arr):
     return result
 
 
-def makedir(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-
 def transform_test(transform, img_path):
     '''
     用于测试设置的transform 是否有问题
@@ -325,18 +467,6 @@ def transform_test(transform, img_path):
     img_b = transform(img_pil)
     img_r.show()
     img_b.show()
-
-
-def replace_string(path, index, new_one):
-    '''
-    选择更换指定未知的字符串为某个新字符串
-    :param path:
-    :return:
-    '''
-    path_split = path.split('/')
-    path_split[index] = new_one
-    path_new = '/'.join(path_split)
-    return path_new
 
 
 def save_csv(csv_path, data):
@@ -482,7 +612,7 @@ def video_to_frames(pathIn='',
                         if not isColor:
                             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                         print('Write a new frame: {}, {}/{}'.format(success, count + 1, n_frames))
-                        cv2.imwrite(os.path.join(pathOut, "{}_{:06d}.bmp".format(output_prefix, count + 1)), image,
+                        cv2.imwrite(os.path.join(pathOut, "{}_{:06d}.jpg".format(output_prefix, count + 1)), image,
                                     [int(cv2.IMWRITE_JPEG_QUALITY), jpg_quality])  # save frame as JPEG file
                         count = count + 1
             else:
@@ -494,7 +624,7 @@ def video_to_frames(pathIn='',
                         if not isColor:
                             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                         print('Write a new frame: {}, {}/{}'.format(success, count + 1, n_frames))
-                        cv2.imwrite(os.path.join(pathOut, "{}_{:06d}.bmp".format(output_prefix, count + 1)), image,
+                        cv2.imwrite(os.path.join(pathOut, "{}_{:06d}.jpg".format(output_prefix, count + 1)), image,
                                     [int(cv2.IMWRITE_JPEG_QUALITY), jpg_quality])  # save frame as JPEG file
                         count = count + 1
 
@@ -522,7 +652,7 @@ def video_to_frames(pathIn='',
                         if not isColor:
                             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                         print('Write a new frame: {}, {}th'.format(success, count + 1))
-                        cv2.imwrite(os.path.join(pathOut, "{}_{:06d}.bmp".format(output_prefix, count + 1)), image,
+                        cv2.imwrite(os.path.join(pathOut, "{}_{:06d}.jpg".format(output_prefix, count + 1)), image,
                                     [int(cv2.IMWRITE_JPEG_QUALITY), jpg_quality])  # save frame as JPEG file
                         count = count + 1
             else:
@@ -535,7 +665,7 @@ def video_to_frames(pathIn='',
                         if not isColor:
                             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                         print('Write a new frame: {}, {}th'.format(success, count + 1))
-                        cv2.imwrite(os.path.join(pathOut, "{}_{:06d}.bmp".format(output_prefix, count + 1)), image,
+                        cv2.imwrite(os.path.join(pathOut, "{}_{:06d}.jpg".format(output_prefix, count + 1)), image,
                                     [int(cv2.IMWRITE_JPEG_QUALITY), jpg_quality])  # save frame as JPEG file
                         count = count + 1
 
@@ -616,3 +746,29 @@ def img_preview(img_dir):
         cv2.namedWindow("img_show", 0)
         cv2.imshow("img_show", img)
         cv2.waitKey(0)
+
+
+def x_to_jpg(x_path):
+    img_path_list = get_file_list(x_path)
+    for img_path in img_path_list:
+        img = cv2.imread(img_path)
+        save_path = replace_string(img_path, -1, 'jpg', split_str='.')
+        print(save_path)
+        cv2.imwrite(save_path, img)
+
+
+def process_hdf5():
+    f = h5py.File('/home/shicaiwei/data/liveness_data/HQ-WMCA/1_01_0092_0000_00_00_000-fad05fcd.hdf5', 'r')
+    print(f.filename, ":")
+    print([key for key in f.keys()], "\n")
+    d = f["Frame_2"]
+    for k in d.keys():
+        print(k)
+    d = d['array']
+    for i in range(d.shape[0]):
+        sample = d[i, :, :]
+        cv2.imshow("sample", sample)
+        cv2.waitKey(0)
+    print(d.shape)
+    print(d.value)
+    print(1)
