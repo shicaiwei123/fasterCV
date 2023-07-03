@@ -3,8 +3,10 @@ import torchvision.transforms as tt
 import torch
 import numpy as np
 rotaion = tt.Compose([tt.RandomRotation(30)])
-
-
+from multiprocessing import Process
+import os
+import cv2
+from lib.processing_utils import makedir,get_file_list,recut_face_with_landmarks
 def transform_test():
     from PIL import Image
 
@@ -64,3 +66,40 @@ def gather_unique_test():
 
     a = np.take(x, axis=0, indices=indices_unique)
     print(a)
+
+
+def get_landmarks_face(start, end):
+    data_path = "/home/data/shicaiwei/oulu/Test_face_normal"
+    save_dir = "/home/data/shicaiwei/oulu/Test_face_landmarks"
+    video_list = os.listdir(data_path)
+    video_list.sort()
+    video_list = video_list[start:end]
+    print(start)
+    for video in video_list:
+        video_path = os.path.join(data_path, video)
+        img_path_list = get_file_list(video_path)
+        img_path_list.sort()
+
+        save_dir = os.path.join(save_dir, video)
+        makedir(save_dir)
+        for path in img_path_list:
+            print(path)
+            img = cv2.imread(path)
+            landmarks_face = recut_face_with_landmarks(img)
+            img_name = path.split('/')[-1]
+            save_path = os.path.join(save_dir, img_name)
+            cv2.imwrite(save_path, landmarks_face)
+
+        save_dir = "/home/data/shicaiwei/oulu/Test_face_landmarks"
+
+
+def multimodal_test():
+    process_list = []
+    for i in range(20):  # 开启5个子进程执行fun1函数
+        p = Process(target=get_landmarks_face, args=(i * 90, i * 90 + 90,))  # 实例化进程对象
+        p.start()
+        process_list.append(p)
+
+    for p in process_list:
+        p.join()
+

@@ -4,8 +4,9 @@ import random
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-import pdb
-
+import torchvision.transforms.functional as F
+import torchvision.transforms as tt
+from PIL import Image
 
 
 class RandomHorizontalFlip_multi(object):
@@ -101,6 +102,101 @@ class RondomCrop_multi(object):
             value = sample[keys[index]]
             sample[keys[index]] = value[y:y + self.size, x:x + self.size, :]
         return sample
+
+
+class Lambda(object):
+    """Apply a user-defined lambda as a transform.
+
+    Args:
+        lambd (function): Lambda/function to be used for transform.
+    """
+
+    def __init__(self, lambd):
+        assert callable(lambd), repr(type(lambd).__name__) + " object is not callable"
+        self.lambd = lambd
+
+    def __call__(self, img):
+        return self.lambd(img)
+
+    def __repr__(self):
+        return self.__class__.__name__ + '()'
+
+
+class ColorAdjust_multi(object):
+
+    def __init__(self, brightness=0, contrast=0, saturation=0, hue=0):
+
+        self.brightness = self._check_input(brightness)
+        self.contrast = self._check_input(contrast)
+        self.saturation = self._check_input(saturation)
+        self.hue = [0 - hue, 0 + hue]
+
+    def _check_input(self, value, center=1, clip_first_on_zero=True):
+
+        value = [center - value, center + value]
+        if clip_first_on_zero:
+            value[0] = max(value[0], 0)
+        if value[0] == value[1] == center:
+            value = None
+        return value
+
+    @staticmethod
+    def get_params(brightness, contrast, saturation, hue):
+        """Get a randomized transform to be applied on image.
+
+        Arguments are same as that of __init__.
+
+        Returns:
+            Transform which randomly adjusts brightness, contrast and
+            saturation in a random order.
+        """
+        transforms = []
+
+        if brightness is not None:
+            brightness_factor = random.uniform(brightness[0], brightness[1])
+            transforms.append(Lambda(lambda img: F.adjust_brightness(img, brightness_factor)))
+
+        if contrast is not None:
+            contrast_factor = random.uniform(contrast[0], contrast[1])
+            transforms.append(Lambda(lambda img: F.adjust_contrast(img, contrast_factor)))
+
+        if saturation is not None:
+            saturation_factor = random.uniform(saturation[0], saturation[1])
+            transforms.append(Lambda(lambda img: F.adjust_saturation(img, saturation_factor)))
+
+        if hue is not None:
+            hue_factor = random.uniform(hue[0], hue[1])
+            transforms.append(Lambda(lambda img: F.adjust_hue(img, hue_factor)))
+
+        random.shuffle(transforms)
+        transform = tt.Compose(transforms)
+
+        return transform
+
+    def __call__(self, sample):
+
+        keys = sample.keys()
+        keys = list(keys)
+        transform = self.get_params(self.brightness, self.contrast,
+                                    self.saturation, self.hue)
+
+        for index in range(len(keys) - 1):
+            value = sample[keys[index]]
+            value = cv2.cvtColor(value, cv2.COLOR_BGR2RGB)
+            value_pil = Image.fromarray(value)
+            value_tramsform = transform(value_pil)
+            value = np.array(value_tramsform)
+            value = cv2.cvtColor(value, cv2.COLOR_RGB2BGR)
+            sample[keys[index]] = value
+        return sample
+
+    def __repr__(self):
+        format_string = self.__class__.__name__ + '('
+        format_string += 'brightness={0}'.format(self.brightness)
+        format_string += ', contrast={0}'.format(self.contrast)
+        format_string += ', saturation={0}'.format(self.saturation)
+        format_string += ', hue={0})'.format(self.hue)
+        return format_string
 
 
 class Cutout_multi(object):

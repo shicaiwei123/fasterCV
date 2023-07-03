@@ -50,8 +50,10 @@ def calc_accuracy(model, loader, verbose=False, hter=False):
 
             # 如果有模型有多个返回
             if isinstance(outputs_batch, tuple):
-                outputs_batch = outputs_batch[0]
-        outputs_full.append(outputs_batch)
+                output_batch = outputs_batch[0]
+            else:
+                output_batch = outputs_batch
+        outputs_full.append(output_batch)
         labels_full.append(labels)
     model.train(mode_saved)
     outputs_full = torch.cat(outputs_full, dim=0)
@@ -290,7 +292,11 @@ def train_base(model, cost, optimizer, train_loader, test_loader, args):
 
             optimizer.zero_grad()
 
-            output = model(data)
+            outputs = model(data)
+            if isinstance(outputs, tuple):
+                output = outputs[0]
+            else:
+                output = outputs
 
             if args.mixup:
                 loss = mixup_criterion(cost, output, labels_a, labels_b, lam)
@@ -620,7 +626,7 @@ def sensitity_plot():
     '''
 
     import matplotlib.pyplot as plt
-    x = [0.2,0.4,0.6,0.8]
+    x = [0.2, 0.4, 0.6, 0.8]
     y = [7.7, 7.8, 7.3, 7.6]
     error = [0.2, 0.4, 0.4, 0.3]
     plt.ylim([6.75, 8.25])

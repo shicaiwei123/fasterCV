@@ -6,6 +6,29 @@ import cv2
 import dlib
 import random
 import h5py
+from torchvision.transforms.functional import normalize, resize, to_pil_image
+from torchvision.models import resnet18
+from torchcam.methods import SmoothGradCAMpp
+import scipy.io as scio
+import mat73
+
+from sklearn.metrics import roc_curve
+
+
+def get_err_threhold(fpr, tpr, threshold):
+    RightIndex = (tpr + (1 - fpr) - 1)
+    right_index = np.argmax(RightIndex)
+    best_th = threshold[right_index]
+    err = fpr[right_index]
+
+    differ_tpr_fpr_1 = tpr + fpr - 1.0
+
+    right_index = np.argmin(np.abs(differ_tpr_fpr_1))
+    best_th = threshold[right_index]
+    err = fpr[right_index]
+
+    # print(err, best_th)
+    return err, best_th
 
 
 class FaceDection(object):
@@ -508,6 +531,23 @@ def read_csv(csv_path):
     return data_list
 
 
+def load_mat(mat_path):
+    try:
+        data = scio.loadmat(mat_path)
+        data = data[list(data.keys())[-1]]
+    except Exception as e:
+        # data = h5py.File(mat_path)
+        # data_key = data.keys()
+        # print(data_key)
+        # data = data[list(data_key)[0]]
+        # print(data.shape)
+        # print(dir(data))
+        # data = data.value
+        data = mat73.loadmat(mat_path)
+        data = data[list(data.keys())[0]]
+    return data
+
+
 def read_txt(txt_path):
     '''
     读取txt 文件
@@ -772,3 +812,147 @@ def process_hdf5():
     print(d.shape)
     print(d.value)
     print(1)
+
+
+def generate_relative_path(dataset_root):
+    '''
+    为单个数据集生成相对路径
+    :param dataset_root:
+    :return:
+    '''
+    file_path_list = get_file_list(dataset_root)
+    dataset_root_split = dataset_root.split('/')
+    dataset_root_split_set = set(dataset_root_split)
+    for path in file_path_list:
+        path_split = path.split('/')
+        path_split_set = set(path_split)
+        relative_path_set = path_split_set - dataset_root_split_set
+        relative_path_list = list(relative_path_set)
+        relative_path = '/'.join(relative_path_list)
+        return relative_path
+
+
+def get_prediction(outputs_full, labels_full):
+    '''
+    目的是为了获取最优的划分边界,但是只适合二分类?
+    输入是所有输出预测输出的logits的集成和 label.()
+    :param outputs_full: sample x class_num
+    label_full, sample x 1
+    :return:
+    '''
+    predict_prob = torch.softmax(outputs_full.data, 1)
+    predict_prob = predict_prob[:, 1]
+    print(predict_prob.shape)
+    fpr_test, tpr_test, threshold_test = roc_curve(labels_full.cpu().numpy(), predict_prob.cpu().numpy(), pos_label=1)
+    err_test, best_test_threshold = get_err_threhold(fpr_test, tpr_test, threshold_test)
+    print(err_test, best_test_threshold)
+
+    labels_predicted = torch.softmax(outputs_full.data, dim=1)
+    labels_predicted = labels_predicted[:, 1]
+    labels_predicted[labels_predicted > best_test_threshold] = 1
+    labels_predicted[labels_predicted < 1] = 0
+
+
+def cam_analysii(model, img_path):
+    model = resnet18(pretrained=True).eval()
+    cam_extractor = SmoothGradCAMpp(model)
+    # Get your input
+    img = cv2.imread(img_path)
+    # Preprocess it for your chosen model
+    input_tensor = normalize(resize(img, (224, 224)) / 255., [0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+
+    # Preprocess your data and feed it to the model
+    out = model(input_tensor.unsqueeze(0))
+    # Retrieve the CAM by passing the class index and the model output
+    activation_map = cam_extractor(out.squeeze(0).argmax().item(), out)
+    import matplotlib.pyplot as plt
+    # Visualize the raw CAM
+    plt.imshow(activation_map[0].numpy())
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+
+
+def model_infer_func(model, val_loader):
+    '''
+    需要单独写这个函数是为了兼容不同模型的输入可能不同,推理过程可能不同,难以自适应
+    可以直接复制val/test的代码就可以.
+    :param model:
+    :param datalodaer:
+    :return:
+    '''
+    target_list = []
+    output_list = []
+    with torch.no_grad():
+        for idx, (input, target) in enumerate(val_loader):
+
+            input = input.float()
+            if torch.cuda.is_available():
+                input = input.cuda()
+                target = target.cuda()
+
+            # compute output
+            output, patch, _ = model(input, is_student=False)
+            patch_score = patch
+            target_list.append(target)
+            output_list.append(output)
+
+        output_list = torch.cat(output, dim=0)
+        target_list = torch.cat(output, dim=0)
+        output_arr = np.array(output_list.cpu())
+        target_arr = np.array(target_list.cpu())
+        output_arr = np.transpose(output_arr)
+        target_arr = np.transpose(target_arr)
+        return output_arr, target_arr
+
+
+def get_model_infer_result(model_origin, model_enhance, val_dataloader, model_infer_func):
+    origin_out, origin_label = model_infer_func(model_origin, val_dataloader)
+    enhance_out, enhance_label = model_infer_func(model_enhance, val_dataloader)
+
+    with open('origin_out.csv', 'a+', newline='') as f:
+        for i in range(origin_out.shape[0]):
+            writer = csv.writer(f)
+            row = origin_out[i, :]
+            row = list(row.cpu().detach().numpy())
+            writer.writerow(row)
+
+    with open('enhance_out.csv', 'a+', newline='') as f:
+        for i in range(enhance_out.shape[0]):
+            writer = csv.writer(f)
+            row = enhance_out[i, :]
+            row = list(row.cpu().detach().numpy())
+            writer.writerow(row)
+
+    with open('label.csv', 'a+', newline='') as f:
+        for i in range(origin_label.shape[0]):
+            writer = csv.writer(f)
+            row = origin_label[i, :]
+            row = list(row.cpu().detach().numpy())
+            writer.writerow(row)
+
+
+def predicction_analysis():
+    '''
+    对分类结果进行分析的代码片段,为了获取每个模型的预测结果,和预测结果的差异,并分析差异成分.
+    :return:
+    '''
+
+    # 获取预测结果
+    target_list = []
+    target_numpy = []
+    patch_score = torch.tensor([1.8, 2.2])  # 预测的logit 输出
+    with open('model_origin_prediction.csv', 'a+', newline='') as f:
+        for i in range(patch_score.shape[0]):
+            writer = csv.writer(f)
+            for j in range(patch_score.shape[2]):
+                row = patch_score[i, :, j]
+                row = list(row.cpu().detach().numpy())
+                writer.writerow(row)
+
+
+if __name__ == '__main__':
+    a = [1, 2, 4, 3]
+    b = ['a', 'c', 'd', 'e']
+    c, d = sort_via_assist(b, a)
+    print(c, d)
